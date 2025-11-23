@@ -23,35 +23,59 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    - name: Make gradlew executable
-      run: chmod +x ./gradlew
+    - name: Find gradlew and set up environment
+      id: gradle_setup
+      run: |
+        # 查找 gradlew 文件
+        GRADLEW_PATH=$(find . -name "gradlew" -type f | head -n1)
+        if [ -z "$GRADLEW_PATH" ]; then
+          echo "gradlew not found, checking if we can generate it"
+          if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
+            echo "Generating gradlew..."
+            gradle wrapper
+            GRADLEW_PATH="./gradlew"
+          else
+            echo "Error: No gradlew found and cannot generate it"
+            exit 1
+          fi
+        fi
+        
+        GRADLEW_DIR=$(dirname "$GRADLEW_PATH")
+        echo "GRADLEW_PATH=$GRADLEW_PATH" >> $GITHUB_ENV
+        echo "GRADLEW_DIR=$GRADLEW_DIR" >> $GITHUB_ENV
+        echo "Using gradlew at: $GRADLEW_PATH"
+        chmod +x "$GRADLEW_PATH"
 
     - name: Build Release APK
-      run: ./gradlew assembleRelease
+      run: |
+        cd "${{ env.GRADLEW_DIR }}"
+        ./gradlew assembleRelease
 
     - name: Build Release AAB
-      run: ./gradlew bundleRelease
+      run: |
+        cd "${{ env.GRADLEW_DIR }}"
+        ./gradlew bundleRelease
 
     - name: Upload Release APK
       uses: actions/upload-artifact@v4
       with:
         name: pocketdev-release-apk
-        path: app/build/outputs/apk/release/app-release.apk
+        path: "${{ env.GRADLEW_DIR }}/app/build/outputs/apk/release/app-release.apk"
         retention-days: 30
 
     - name: Upload Release AAB
       uses: actions/upload-artifact@v4
       with:
         name: pocketdev-release-aab
-        path: app/build/outputs/bundle/release/app-release.aab
+        path: "${{ env.GRADLEW_DIR }}/app/build/outputs/bundle/release/app-release.aab"
         retention-days: 30
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          app/build/outputs/apk/release/app-release.apk
-          app/build/outputs/bundle/release/app-release.aab
+          ${{ env.GRADLEW_DIR }}/app/build/outputs/apk/release/app-release.apk
+          ${{ env.GRADLEW_DIR }}/app/build/outputs/bundle/release/app-release.aab
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
